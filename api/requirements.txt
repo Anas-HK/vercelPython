@@ -1,4 +1,4 @@
-PyMuPDF
 openai
-numpy
-scikit-learn
+pdfminer.six
+numexpr
+scipy
