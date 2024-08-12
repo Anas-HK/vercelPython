@@ -1,13 +1,14 @@
 from http.server import BaseHTTPRequestHandler
 from urllib import parse
-from pdfminer.high_level import extract_text
+from pdfminer.high_level import extract_text_to_fp
 import openai
 import os
 import numexpr as ne
 from scipy.spatial.distance import cosine
+import io
 
 # Set your OpenAI API key
-openai.api_key = "sk-proj-ul44Q4GsK0DM09LKRqVHT3BlbkFJNfK1KgPsggeyzp2Zdyya"
+openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # Define default PDF paths
 pdf_paths = [
@@ -16,35 +17,33 @@ pdf_paths = [
 ]
 
 def extract_text_from_pdf(pdf_path):
-    text = extract_text(pdf_path)
-    return text.split('\f')  # Split into pages
+    output_string = io.StringIO()
+    with open(pdf_path, 'rb') as f:
+        extract_text_to_fp(f, output_string)
+    return output_string.getvalue().split('\f')  # Split into pages
 
 def preprocess_text(text):
-    text = ' '.join(text.split())  # Replace multiple spaces with a single space and strip
-    return text
+    return ' '.join(text.split())
 
 def get_embeddings(texts, model="text-embedding-ada-002"):
-    response = openai.Embedding.create(
-        input=texts,
-        model=model
-    )
+    response = openai.Embedding.create(input=texts, model=model)
     embeddings = [item['embedding'] for item in response['data']]
     return embeddings
 
 def index_documents(pdf_paths):
     all_texts = []
     all_embeddings = []
-    
+
     for pdf_path in pdf_paths:
         if not os.path.exists(pdf_path):
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
         text_by_page = extract_text_from_pdf(pdf_path)
         preprocessed_texts = [preprocess_text(text) for text in text_by_page]
         embeddings = get_embeddings(preprocessed_texts)
-        
+
         all_texts.extend(preprocessed_texts)
         all_embeddings.extend(embeddings)
-    
+
     return all_texts, all_embeddings
 
 def retrieve_relevant_documents(query, texts, embeddings, model="text-embedding-ada-002", top_k=5):
