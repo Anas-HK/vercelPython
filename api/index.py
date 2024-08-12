@@ -1,32 +1,26 @@
-import fitz  # PyMuPDF
-import re
-import openai
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-import os
 from http.server import BaseHTTPRequestHandler
 from urllib import parse
+from pdfminer.high_level import extract_text
+import openai
+import os
+import numexpr as ne
+from scipy.spatial.distance import cosine
 
 # Set your OpenAI API key
 openai.api_key = "sk-proj-ul44Q4GsK0DM09LKRqVHT3BlbkFJNfK1KgPsggeyzp2Zdyya"
 
-# Define PDF paths relative to the api directory
+# Define default PDF paths
 pdf_paths = [
     './api/rainenotfunc.pdf',
     './api/Email_consent_form.pdf'
 ]
 
 def extract_text_from_pdf(pdf_path):
-    pdf_document = fitz.open(pdf_path)
-    text_by_page = []
-    for page_num in range(len(pdf_document)):
-        page = pdf_document.load_page(page_num)
-        text = page.get_text()
-        text_by_page.append(text)
-    return text_by_page
+    text = extract_text(pdf_path)
+    return text.split('\f')  # Split into pages
 
 def preprocess_text(text):
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = ' '.join(text.split())  # Replace multiple spaces with a single space and strip
     return text
 
 def get_embeddings(texts, model="text-embedding-ada-002"):
@@ -55,8 +49,8 @@ def index_documents(pdf_paths):
 
 def retrieve_relevant_documents(query, texts, embeddings, model="text-embedding-ada-002", top_k=5):
     query_embedding = get_embeddings([query], model=model)[0]
-    similarities = cosine_similarity([query_embedding], embeddings)[0]
-    top_k_indices = similarities.argsort()[-top_k:][::-1]
+    similarities = [1 - cosine(query_embedding, embedding) for embedding in embeddings]
+    top_k_indices = sorted(range(len(similarities)), key=lambda i: similarities[i], reverse=True)[:top_k]
     relevant_texts = [texts[i] for i in top_k_indices]
     return relevant_texts
 
@@ -82,7 +76,7 @@ class handler(BaseHTTPRequestHandler):
         s = self.path
         dic = dict(parse.parse_qsl(parse.urlsplit(s).query))
         self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
+        self.send_header('Content-type','text/plain')
         self.end_headers()
 
         if "query" in dic:
@@ -90,10 +84,10 @@ class handler(BaseHTTPRequestHandler):
 
             # Index documents from predefined PDFs
             texts, embeddings = index_documents(pdf_paths)
-            
+
             # Retrieve relevant documents
             relevant_texts = retrieve_relevant_documents(query, texts, embeddings)
-            
+
             # Generate response
             response = generate_response(query, relevant_texts)
         else:
