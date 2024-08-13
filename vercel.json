@@ -1,8 +1,13 @@
 {
   "version": 2,
+  "build": {
+    "env": {
+      "VERCEL_BUILD_SYSTEM_REPORT": "1"
+    }
+  },
   "functions": {
     "api/index.py": {
-      "memory": 768,
+      "memory": 1024,
       "maxDuration": 10
     }
   },
